@@ -1,7 +1,21 @@
-Hash table:
+Hash table (std::unordered_map<EntityID, int32_t>):
+- Memory: only keeps pairs that are real, along with table overhead (buckets, nodes).
+- Access: worst-case O(N), anticipated O(1). The constant factor and cache locality are harmed by hashing and pointer chasing.
+- Maintenance: simple to put in and take out. However, the map value of that entity needs to be updated whenever packed storage moves a component (e.g., swap-with-last to fill a hole).
 
-Map:
+Map (std::map<EntityID, int32_t>):
+- Memory: only existing pairs, plus red-black tree overhead (nodes, pointers, balance data).
+- Access: O(log N), always. Finds are predictable but involve more pointer chasing and worse locality than a hash table.
+- Maintenance: same as the hash table (values must be updated when packed storage moves components); iteration comes out sorted by ID.
 
-Sparse mapping 1:
+Sparse mapping 1 (std::vector<std::array<int32_t, K>>, [N][K]):
+- Memory: O(NK) always, even in the lack of an entity or component pair, one slot. If the majority of pairs are -1, it wastes space.
+- Access: O(1) direct index without hashing. Touching several components of a single entity is cache-friendly because an entity's K values are contiguous, scanning a single component across entities strides by K.
+- Maintenance: an entity is just a row, push_back to add, but removing/compacting rows needs ID remapping or leaves gaps.
 
-Sparse mapping 2:
+Sparse mapping 2 (std::array<std::vector<int32_t>, K>, [K][N]):
+- Memory: O(NK), same total as mapping 1, split into K separate vectors.
+- Access: O(1) direct index. One component's values across all entities are contiguous, great for component-centric scans; checking several components on one entity jumps between vectors, which is worse for locality.
+- Maintenance: adding an entity appends a slot to every vector; ID/index alignment and row removal concerns are the same as mapping 1.
+
+Overall: the maps only pay for components that exist, so they suit sparse, changing data despite slower lookups; the dense grids always cost O(NK) but give simple, fast, cache-friendly access. Prefer [N][K] when you loop over a few components per entity, [K][N] when you loop over many entities for a single component.
